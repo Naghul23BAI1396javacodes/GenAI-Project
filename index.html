@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexiSentiment - AI Legal Sentiment Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for chat */
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 4px;
+        }
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+        
+        /* Pulse animation for thinking indicator */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse {
+            animation: pulse 1.5s infinite;
+        }
+        
+        /* Sentiment bar animation */
+        .sentiment-fill {
+            transition: width 1s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <div class="container mx-auto max-w-6xl p-4">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-8 p-4 bg-white rounded-lg shadow-sm">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center">
+                    <img src="https://storage.googleapis.com/workspace-0f70711f-8b4e-4d94-86f1-2a93ccde5887/image/9894b0cd-5cec-40a9-9bd8-a24bb0305d64.png" alt="LexiSentiment logo featuring a stylized balance scale with blue gradient" />
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">LexiSentiment</h1>
+                    <p class="text-sm text-gray-500">AI-Powered Legal Sentiment Analysis</p>
+                </div>
+            </div>
+            <div class="hidden md:block">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
+                    Beta Version
+                </span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Main Chat Interface -->
+            <div class="lg:col-span-2 bg-white rounded-lg shadow-sm overflow-hidden">
+                <!-- Chat Header -->
+                <div class="border-b border-gray-200 p-4 bg-indigo-50">
+                    <h2 class="font-semibold text-lg text-gray-800">Legal Sentiment Analysis Chat</h2>
+                    <p class="text-sm text-gray-600">
+                        Analyze sentiment in legal documents, contracts, and communications
+                    </p>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div class="chat-container h-96 overflow-y-auto p-4 space-y-4" id="chat-messages">
+                    <!-- Welcome message (will be removed after first interaction) -->
+                    <div class="p-4 rounded-lg bg-indigo-50 border border-indigo-100 text-gray-700">
+                        <div class="font-medium mb-1 text-indigo-700">LexiSentiment Assistant</div>
+                        <p>Welcome to LexiSentiment AI. I can help analyze sentiment in legal texts such as:</p>
+                        <ul class="list-disc pl-5 mt-2 space-y-1">
+                            <li>Contract clauses</li>
+                            <li>Court filings</li>
+                            <li>Legal correspondence</li>
+                            <li>Regulatory documents</li>
+                        </ul>
+                        <p class="mt-3">Simply paste or type your legal text below and I'll analyze the sentiment.</p>
+                    </div>
+                </div>
+                
+                <!-- Input Area -->
+                <div class="border-t border-gray-200 p-4">
+                    <div class="relative">
+                        <textarea 
+                            id="user-input" 
+                            placeholder="Paste legal text to analyze (e.g., contract clause, legal letter)..."
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                            rows="3"
+                        ></textarea>
+                        <div class="flex justify-between items-center mt-2">
+                            <div class="text-xs text-gray-500" id="word-count">
+                                0 words
+                            </div>
+                            <button 
+                                id="send-btn"
+                                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+                            >
+                                Analyze Sentiment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Analysis Panel -->
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="border-b border-gray-200 p-4 bg-indigo-50">
+                    <h2 class="font-semibold text-lg text-gray-800">Sentiment Analysis</h2>
+                    <p class="text-sm text-gray-600">
+                        Results and breakdown of legal sentiment
+                    </p>
+                </div>
+                
+                <div class="p-4" id="analysis-panel">
+                    <div class="text-center py-8 text-gray-400">
+                        <p>Analyzed content will appear here</p>
+                    </div>
+                    
+                    <!-- Hidden template for sentiment results -->
+                    <div id="sentiment-template" class="hidden">
+                        <div class="mb-6">
+                            <h3 class="font-medium text-gray-700 mb-2">Overall Sentiment</h3>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-sm font-medium text-gray-600">Negative</span>
+                                <span class="text-sm font-medium text-gray-600">Neutral</span>
+                                <span class="text-sm font-medium text-gray-600">Positive</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                <div class="sentiment-fill h-full rounded-full bg-gradient-to-r from-red-500 via-yellow-300 to-green-500" style="width: 50%"></div>
+                            </div>
+                            <div class="flex justify-center mt-2">
+                                <span class="text-sm font-medium text-gray-700" id="sentiment-score">Neutral (0.5)</span>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="font-medium text-gray-700 mb-2">Key Sentiment Drivers</h3>
+                                <ul class="space-y-2" id="key-drivers"></ul>
+                            </div>
+                            
+                            <div>
+                                <h3 class="font-medium text-gray-700 mb-2">Legal Tone</h3>
+                                <div class="flex flex-wrap gap-2" id="legal-tones"></div>
+                            </div>
+                            
+                            <div>
+                                <h3 class="font-medium text-gray-700 mb-2">Potential Concerns</h3>
+                                <ul class="space-y-1 text-sm" id="concerns"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Disclaimer -->
+        <div class="mt-6 p-4 bg-white rounded-lg shadow-sm">
+            <div class="text-xs text-gray-500">
+                <p><strong>Disclaimer:</strong> LexiSentiment provides AI-powered sentiment analysis for informational purposes only. It does not constitute legal advice. Results should be reviewed by qualified legal professionals. Accuracy of analysis cannot be guaranteed.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const userInput = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            const chatMessages = document.getElementById('chat-messages');
+            const wordCount = document.getElementById('word-count');
+            const analysisPanel = document.getElementById('analysis-panel');
+            const sentimentTemplate = document.getElementById('sentiment-template');
+            
+            // Update word count
+            userInput.addEventListener('input', function() {
+                const words = this.value.trim() === '' ? 0 : this.value.trim().split(/\s+/).length;
+                wordCount.textContent = `${words} words`;
+                sendBtn.disabled = words < 5;
+            });
+            
+            // Handle send button click
+            sendBtn.addEventListener('click', function() {
+                const text = userInput.value.trim();
+                if (text.length < 20) return;
+                
+                // Add user message to chat
+                addMessage('user', text);
+                userInput.value = '';
+                wordCount.textContent = '0 words';
+                sendBtn.disabled = true;
+                
+                // Show thinking indicator
+                const thinkingMsg = addMessage('assistant', 'Analyzing sentiment...');
+                thinkingMsg.classList.add('pulse');
+                
+                // Simulate API call delay
+                setTimeout(() => {
+                    // Remove thinking indicator
+                    thinkingMsg.classList.add('hidden');
+                    
+                    // Generate mock analysis
+                    const analysis = analyzeSentiment(text);
+                    
+                    // Add response message
+                    addMessage('assistant', analysis.response);
+                    
+                    // Update analysis panel
+                    updateAnalysisPanel(analysis);
+                }, 1500);
+            });
+            
+            // Handle Enter key (but allow Shift+Enter for new lines)
+            userInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendBtn.click();
+                }
+            });
+            
+            // Helper function to add message to chat
+            function addMessage(sender, text) {
+                const messageDiv = document.createElement('div');
+                const isUser = sender === 'user';
+                
+                messageDiv.className = `p-4 rounded-lg ${isUser ? 'bg-indigo-600 text-white ml-6' : 'bg-indigo-50 border border-indigo-100 mr-6 text-gray-700'}`;
+                
+                const senderDiv = document.createElement('div');
+                senderDiv.className = `font-medium mb-1 ${isUser ? 'text-indigo-100' : 'text-indigo-700'}`;
+                senderDiv.textContent = isUser ? 'You' : 'LexiSentiment Assistant';
+                messageDiv.appendChild(senderDiv);
+                
+                const textDiv = document.createElement('div');
+                textDiv.textContent = text;
+                messageDiv.appendChild(textDiv);
+                
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Remove welcome message if it's still there
+                if (document.querySelector('.chat-container > div:first-child')?.textContent.includes('Welcome to LexiSentiment AI')) {
+                    document.querySelector('.chat-container > div:first-child').remove();
+                }
+                
+                return messageDiv;
+            }
+            
+            // Mock sentiment analysis function
+            function analyzeSentiment(text) {
+                // Simple word counting (mock)
+                const words = text.toLowerCase().split(/\s+/);
+                const positive = ['fair', 'agree', 'protect', 'rights', 'benefit', 'protect'];
+                const negative = ['terminate', 'breach', 'liable', 'damages', 'penalty', 'enforce'];
+                
+                let positiveCount = words.filter(w => positive.includes(w)).length;
+                let negativeCount = words.filter(w => negative.includes(w)).length;
+                let neutralCount = words.length - positiveCount - negativeCount;
+                
+                // Calculate sentiment score (0-1 where 0.5 is neutral)
+                const score = 0.5 + (positiveCount - negativeCount) / words.length / 2;
+                
+                // Determine sentiment label
+                let sentimentLabel;
+                if (score < 0.35) sentimentLabel = 'Highly Negative';
+                else if (score < 0.45) sentimentLabel = 'Negative';
+                else if (score < 0.55) sentimentLabel = 'Neutral';
+                else if (score < 0.75) sentimentLabel = 'Positive';
+                else sentimentLabel = 'Highly Positive';
+                
+                // Generate example response
+                const analysisId = 'analysis' + Date.now();
+                const response = `I've analyzed the legal text and detected ${sentimentLabel.toLowerCase()} sentiment. ` +
+                                 `See the detailed analysis in the right panel.`;
+                
+                // Generate example key drivers
+                const keyDrivers = [];
+                if (positiveCount > 0) {
+                    const topPositive = positive
+                        .filter(p => words.includes(p))
+                        .slice(0, 3)
+                        .map(p => `<li><span class="text-green-600">"${p}"</span> terms contributing to positive sentiment</li>`);
+                    keyDrivers.push(...topPositive);
+                }
+                if (negativeCount > 0) {
+                    const topNegative = negative
+                        .filter(n => words.includes(n))
+                        .slice(0, 3)
+                        .map(n => `<li><span class="text-red-600">"${n}"</span> terms contributing to negative sentiment</li>`);
+                    keyDrivers.push(...topNegative);
+                }
+                
+                // Generate example legal tones
+                const tones = [];
+                if (sentimentLabel.includes('Negative')) tones.push('Adversarial', 'Cautious');
+                if (sentimentLabel.includes('Positive')) tones.push('Collaborative', 'Protective');
+                if (negativeCount > positiveCount) tones.push('Risk-Focused');
+                if (positiveCount > negativeCount) tones.push('Opportunity-Focused');
+                
+                return {
+                    score,
+                    response,
+                    sentimentLabel,
+                    keyDrivers,
+                    tones: tones.length ? tones : ['Neutral'],
+                    concerns: [
+                        negativeCount > 3 ? 'Multiple potentially adversarial terms detected' : '',
+                        score < 0.4 ? 'Consider reviewing for overly negative language' : '',
+                        score > 0.7 ? 'Ensure positive commitments are balanced with protections' : ''
+                    ].filter(Boolean)
+                };
+            }
+            
+            // Update analysis panel with results
+            function updateAnalysisPanel(analysis) {
+                // Clone the template
+                const panel = sentimentTemplate.cloneNode(true);
+                panel.classList.remove('hidden');
+                
+                // Update sentiment score
+                panel.querySelector('#sentiment-score').textContent = 
+                    `${analysis.sentimentLabel} (${analysis.score.toFixed(2)})`;
+                
+                // Update sentiment bar position
+                const fill = panel.querySelector('.sentiment-fill');
+                fill.style.width = `${analysis.score * 100}%`;
+                
+                // Update key drivers
+                const driverList = panel.querySelector('#key-drivers');
+                analysis.keyDrivers.forEach(driver => {
+                    driverList.innerHTML += driver;
+                });
+                
+                // Update legal tones
+                const tonesContainer = panel.querySelector('#legal-tones');
+                analysis.tones.forEach(tone => {
+                    const tonePill = document.createElement('span');
+                    tonePill.className = 'px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800';
+                    tonePill.textContent = tone;
+                    tonesContainer.appendChild(tonePill);
+                });
+                
+                // Update potential concerns
+                const concernsList = panel.querySelector('#concerns');
+                if (analysis.concerns.length) {
+                    analysis.concerns.forEach(concern => {
+                        concernsList.innerHTML += `<li class="flex items-start">
+                            <svg class="h-4 w-4 text-red-500 mt-0.5 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            ${concern}
+                        </li>`;
+                    });
+                } else {
+                    concernsList.innerHTML = '<li class="text-green-600">No significant concerns detected</li>';
+                }
+                
+                // Replace analysis panel content
+                analysisPanel.innerHTML = '';
+                analysisPanel.appendChild(panel);
+            }
+        });
+    </script>
+</body>
+</html>
+
