@@ -1,118 +1,128 @@
-import streamlit as st
-import google.generativeai as genai
-from dotenv import load_dotenv
-import os
-import requests
-from fpdf import FPDF
-import tempfile
-from datetime import datetime
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+import warnings
+import re
 
-# Load environment variables
-load_dotenv()
-genai.configure(api_key=os.getenv("YOUR_GEMINI_API_KEY"))
+# Download required NLTK data
+nltk.download('vader_lexicon')
+nltk.download('punkt')
 
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Suppress warnings (optional)
+warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="Travel Planner", page_icon="🧳", layout="centered")
-st.title("🧭 Travel Planner")
-st.write("Plan your perfect trip based on destination, dates, interests, transport, budget, and more!")
-
-# Inputs
-start_location = st.text_input("Your Starting Location", placeholder="example: Chennai, Delhi")
-destination = st.text_input("Destination", placeholder="example: Goa, Paris")
-
-col1, col2 = st.columns(2)
-with col1:
-    start_date = st.date_input("Start Date")
-with col2:
-    end_date = st.date_input("End Date")
-
-trip_days = (end_date - start_date).days
-if trip_days <= 0:
-    st.warning("Please ensure end date is after the start date.")
-
-min_budget = st.number_input("Minimum Budget (in ₹)", min_value=1000, step=500)
-max_budget = st.number_input("Maximum Budget (in ₹)", min_value=min_budget, step=500)
-
-people = st.number_input("Number of People in Trip", min_value=1, step=1)
-
-transport_mode = st.selectbox(
-    "Preferred Mode of Transport (between cities/states)",
-    ["Train", "Car", "Aeroplane", "Ship", "Bus", "Other"]
-)
-
-food_type = st.radio("Preferred Food Type", ["Vegetarian", "Non-Vegetarian"])
-
-# Preferences
-default_preferences = [
-    "Beach", "Food", "Mountains", "Shopping", "Culture",
-    "Adventure", "Nightlife", "Nature", "Relaxation", "Other"
-]
-selected_preferences = st.multiselect("Choose Your Preferred Outing Types", default_preferences)
-
-custom_preferences = []
-if "Other" in selected_preferences:
-    custom_input = st.text_input("Add your own outing types (press Enter to save)", key="custom")
-    if custom_input and custom_input not in custom_preferences:
-        custom_preferences.append(custom_input)
-
-final_preferences = [p for p in selected_preferences if p != "Other"] + custom_preferences
-
-if final_preferences:
-    st.success(f"✅ Selected Preferences: {', '.join(final_preferences)}")
-
-# Generate Itinerary
-if st.button("Generate Itinerary"):
-    if not destination or not start_location or not final_preferences or trip_days <= 0:
-        st.warning("Please fill all fields correctly!")
-    else:
-        with st.spinner("Planning your dream trip..."):
-            prompt = f"""
-            Plan a complete round-trip travel itinerary for {people} people.
-            Starting from: {start_location}
-            Destination: {destination}
-            Dates: From {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')} ({trip_days} days)
-            Budget range: ₹{min_budget} – ₹{max_budget}
-            Preferences: {', '.join(final_preferences)}
-            Preferred Transport: {transport_mode}
-            Food Type: {food_type}
-
-            Ensure:
-            - Add an outbound journey from {start_location} to {destination} and a return trip back
-            - Estimate travel duration for each leg (based on mode of transport)
-            - Include hotel/accommodation suggestions with approximate prices
-            - Suggest 1–3 activities per day
-            - Include food options based on the food preference
-            - Mention total estimated cost for the trip (roughly)
-            - Format clearly with daily breakdown
-
-            Format:
-            Day 1: Travel + Activities
-            Day 2: ...
-            ...
-            Final Day: Return trip
-            """
-
+class LegalSentimentAnalyzer:
+    def __init__(self):
+        # Initialize VADER sentiment analyzer
+        self.sia = SentimentIntensityAnalyzer()
+        
+        # Load legal-specific sentiment model (if available)
+        try:
+            self.legal_tokenizer = AutoTokenizer.from_pretrained("nlpaueb/legal-bert-small-uncased")
+            self.legal_model = AutoModelForSequenceClassification.from_pretrained("nlpaueb/legal-bert-small-uncased")
+            self.legal_sentiment = pipeline("text-classification", 
+                                          model=self.legal_model,
+                                          tokenizer=self.legal_tokenizer)
+            self.legal_model_loaded = True
+        except:
+            self.legal_model_loaded = False
+        
+        # Initialize general sentiment analyzer as fallback
+        self.general_sentiment = pipeline("sentiment-analysis")
+        
+    def analyze_sentiment(self, text):
+        """Analyze sentiment using multiple approaches"""
+        results = {}
+        
+        # Basic VADER analysis
+        vader_result = self.sia.polarity_scores(text)
+        results['vader'] = {
+            'compound': vader_result['compound'],
+            'positive': vader_result['pos'],
+            'negative': vader_result['neg'],
+            'neutral': vader_result['neu']
+        }
+        
+        # Legal-specific analysis if model is available
+        if self.legal_model_loaded:
             try:
-                response = model.generate_content(prompt)
-                itinerary = response.text
-                st.subheader("🗓️ Your Itinerary:")
-                st.markdown(itinerary)
+                legal_result = self.legal_sentiment(text[:512])[0]  # Truncate to model max length
+                results['legal'] = {
+                    'label': legal_result['label'],
+                    'score': legal_result['score']
+                }
+            except:
+                pass
+        
+        # General sentiment analysis as fallback
+        general_result = self.general_sentiment(text[:512])[0]
+        results['general'] = {
+            'label': general_result['label'],
+            'score': general_result['score']
+        }
+        
+        return results
+    
+    def generate_response(self, text):
+        """Generate a human-readable response based on sentiment analysis"""
+        analysis = self.analyze_sentiment(text)
+        
+        # Extract key metrics
+        compound_score = analysis['vader']['compound']
+        general_label = analysis['general']['label']
+        general_score = analysis['general']['score']
+        
+        # Determine overall sentiment
+        if compound_score >= 0.05:
+            overall_sentiment = "positive"
+        elif compound_score <= -0.05:
+            overall_sentiment = "negative"
+        else:
+            overall_sentiment = "neutral"
+        
+        # Generate response
+        response = f"Sentiment Analysis Results:\n"
+        response += f"- Overall sentiment: {overall_sentiment} (VADER compound score: {compound_score:.2f})\n"
+        response += f"- General sentiment: {general_label} (confidence: {general_score:.2f})\n"
+        
+        if 'legal' in analysis:
+            legal_label = analysis['legal']['label']
+            legal_score = analysis['legal']['score']
+            response += f"- Legal-specific sentiment: {legal_label} (confidence: {legal_score:.2f})\n"
+        
+        # Add interpretation
+        response += "\nInterpretation:\n"
+        if overall_sentiment == "positive":
+            response += "The text appears favorable or supportive in tone. "
+            response += "This might indicate pro-plaintiff language, favorable terms, or positive outcomes."
+        elif overall_sentiment == "negative":
+            response += "The text appears unfavorable or critical in tone. "
+            response += "This might indicate pro-defendant language, unfavorable terms, or negative outcomes."
+        else:
+            response += "The text appears neutral or balanced in tone. "
+            response += "Legal documents often maintain neutrality, but examine specific clauses carefully."
+        
+        return response
 
-                # PDF download
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", size=12)
-                for line in itinerary.split("\n"):
-                    try:
-                        pdf.cell(200, 10, txt=line.encode("latin-1", "replace").decode("latin-1"), ln=True)
-                    except:
-                        pass
+def chatbot():
+    analyzer = LegalSentimentAnalyzer()
+    print("Legal Sentiment Analyzer Chatbot")
+    print("Type 'quit' to exit\n")
+    
+    while True:
+        user_input = input("Please enter legal text to analyze (or 'quit'): ")
+        
+        if user_input.lower() == 'quit':
+            break
+            
+        if not user_input.strip():
+            print("Please enter some text to analyze.")
+            continue
+            
+        print("\nAnalyzing text...\n")
+        response = analyzer.generate_response(user_input)
+        print(response)
+        print("\n" + "="*50 + "\n")
 
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    pdf.output(tmp_file.name)
-                    with open(tmp_file.name, "rb") as f:
-                        st.download_button("📥 Download Itinerary as PDF", f, file_name="itinerary.pdf")
-
-            except Exception as e:
-                st.error(f"Error generating itinerary: {e}")
+if __name__ == "__main__":
+    chatbot()
